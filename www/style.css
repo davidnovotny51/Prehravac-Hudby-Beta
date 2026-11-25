@@ -1,0 +1,101 @@
+/* ===== Proměnné a základ ===== */
+:root{--accent:#1ed760;--bg-op:.55;--text:#f2f2f2;--muted:#a3a3ad;--glass:rgba(24,24,30,.45);--line:rgba(255,255,255,.1);--r:18px}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:#0b0b10;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+svg{width:20px;height:20px;fill:currentColor}
+svg.st{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Vrstvy pozadí */
+#bg{position:fixed;inset:0;z-index:-3;background:radial-gradient(circle at 20% 10%,#1d2a3a,#0b0b10 65%) center/cover}
+#bgShade{position:fixed;inset:0;z-index:-2;background:rgba(8,8,12,var(--bg-op))}
+#fx{position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:.9}
+
+/* Skleněný panel */
+.glass{background:var(--glass);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);border:1px solid var(--line);border-radius:var(--r)}
+
+/* Rozložení */
+.app{height:100%;display:grid;grid-template-columns:320px 1fr;grid-template-rows:1fr auto;gap:12px;padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
+aside{display:flex;flex-direction:column;min-height:0;padding:16px}
+main{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;padding:16px;text-align:center}
+.bar{grid-column:1/-1;padding:12px 18px;display:grid;grid-template-columns:1fr 2fr 1fr;align-items:center;gap:16px}
+
+/* Seznam */
+.head{display:flex;gap:8px;margin-bottom:12px}
+.btn{padding:10px 14px;border-radius:999px;background:rgba(255,255,255,.1);font-weight:600;font-size:.9rem;transition:background .2s}
+.btn:hover{background:rgba(255,255,255,.18)}
+.btn.primary{background:var(--accent);color:#07130b}
+#search{width:100%;padding:11px 16px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--text);margin-bottom:10px}
+#list{list-style:none;padding:0;overflow-y:auto;flex:1;min-height:0}
+#list li{padding:10px 12px;border-radius:12px;cursor:pointer;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list li:hover{background:rgba(255,255,255,.08)}
+#list li.on{background:rgba(255,255,255,.14);color:var(--accent)}
+#list li.empty{color:var(--muted);white-space:normal;cursor:default;line-height:1.5}
+
+/* Vizuál */
+.stage{position:relative;width:min(62vh,100%,520px);aspect-ratio:1}
+#viz{position:absolute;inset:0;width:100%;height:100%}
+.cover{position:absolute;inset:22%;border-radius:50%;background:linear-gradient(135deg,var(--accent),#5b3df5);display:grid;place-items:center;box-shadow:0 10px 50px rgba(0,0,0,.5);will-change:transform}
+.cover svg{width:38%;height:38%;fill:none;stroke:#fff;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#title{font-size:clamp(1.2rem,3vw,1.9rem);font-weight:700;margin-top:18px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sub{color:var(--muted);margin-top:4px;font-size:.95rem}
+
+/* Ovládací lišta */
+.now{min-width:0;font-size:.9rem}
+.now b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctr{display:flex;flex-direction:column;gap:6px;align-items:center}
+.btns{display:flex;gap:10px;align-items:center}
+.ic{position:relative;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--muted);transition:.2s}
+.ic:hover{color:var(--text)} .ic.act{color:var(--accent)}
+.play{width:48px;height:48px;background:var(--text);color:#000}
+.play:hover{transform:scale(1.07);color:#000}
+#rep[data-m="2"]::after{content:"1";position:absolute;font-size:.6rem;font-weight:700;top:50%;left:50%;transform:translate(-50%,-50%)}
+.seek{display:flex;gap:10px;align-items:center;width:100%;font-size:.75rem;color:var(--muted)}
+.right{display:flex;justify-content:flex-end;align-items:center;gap:8px;color:var(--muted)}
+.sm{width:18px;height:18px}
+input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:9px;flex:1;cursor:pointer;background:linear-gradient(90deg,var(--accent) var(--p,0%),rgba(255,255,255,.2) var(--p,0%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#fff}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border:0;border-radius:50%;background:#fff}
+#vol{max-width:110px}
+
+/* Modální okno */
+#modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.5);z-index:10;padding:16px}
+#modal.open{display:grid}
+.panel{width:min(440px,100%);padding:22px;display:flex;flex-direction:column;gap:16px;max-height:90vh;overflow:auto;background:rgba(24,24,30,.8)}
+.row{display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.row label{display:flex;justify-content:space-between;color:var(--muted)}
+.inl{display:flex;gap:8px}
+.colors{display:flex;gap:10px}
+.sw{width:34px;height:34px;border-radius:50%;border:2px solid transparent}
+.sw.on{border-color:#fff}
+select{padding:10px;border-radius:12px;background:rgba(255,255,255,.1);color:var(--text);border:1px solid var(--line)}
+select option{color:#000}
+
+/* Mobil */
+@media (max-width:820px){
+  body{overflow:auto}
+  .app{grid-template-columns:1fr;grid-template-rows:auto auto auto;height:auto;min-height:100%}
+  aside{grid-row:2;max-height:38vh} main{grid-row:1;padding:12px 12px 4px}
+  .stage{width:min(78vw,340px)}
+  .bar{grid-row:3;position:sticky;bottom:0;grid-template-columns:1fr;gap:8px;padding:10px 14px}
+  .now{text-align:center} .right{justify-content:center}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ===== Posuvníky ve stylu přehrávače ===== */
+*{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.28) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:var(--accent);background-clip:padding-box}
+.head{flex-wrap:wrap}
+.btn[hidden]{display:none}
+.cover.img{background-size:cover;background-position:center}
+.cover.img svg{display:none}
+
+/* ===== Úrovně výkonu ===== */
+[data-perf=balanced] .glass{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+[data-perf=eco] .glass{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(20,20,26,.86)}
+[data-perf=eco] #fx{display:none}
