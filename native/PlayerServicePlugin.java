@@ -17,7 +17,8 @@ public class PlayerServicePlugin extends Plugin {
     if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
       ActivityCompat.requestPermissions(getActivity(), new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
     Intent i = new Intent(getContext(), PlayerService.class);
-    i.putExtra("title", call.getString("title", "")); i.putExtra("playing", call.getBoolean("playing", true));
+    Boolean pl = call.getBoolean("playing", true);
+    i.putExtra("title", call.getString("title", "")); i.putExtra("playing", pl == null || pl);
     ContextCompat.startForegroundService(getContext(), i);
     call.resolve();
   }

@@ -19,13 +19,13 @@
 <div class="app">
   <aside class="glass">
     <div class="head">
-      <button class="btn primary" id="openBtn">Načíst hudbu</button>
+      <label class="btn primary" id="openBtn" for="files" role="button">Načíst hudbu</label>
       <button class="btn" id="setBtn">Nastavení</button>
       <button class="btn" id="restoreBtn" hidden>Obnovit složku</button>
     </div>
     <input id="search" type="search" placeholder="Hledat skladbu" aria-label="Hledat">
     <ul id="list"></ul>
-    <input id="files" type="file" accept="audio/*" multiple hidden>
+    <input id="files" class="vh" type="file" accept="audio/*" multiple>
   </aside>
 
   <main class="glass">

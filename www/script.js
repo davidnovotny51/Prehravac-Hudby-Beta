@@ -1,6 +1,7 @@
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
+addEventListener('error', e => { const s = document.getElementById('sub'); if (s) s.textContent = 'Chyba: ' + e.message; }); // zobrazí případnou chybu
 
 /* ===== Stav ===== */
 let tracks = [], view = [], cur = -1, shuffle = false, repeat = 0; // repeat: 0 vypnuto, 1 vše, 2 jedna
@@ -100,9 +101,9 @@ async function readCover(file) {
   return null;
 }
 function mediaMeta() { // ovládání na zamčené obrazovce Androidu
-  if (!('mediaSession' in navigator) || cur < 0) return;
+  if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined' || cur < 0) return;
   const u = artUrl || bgUrl;
-  navigator.mediaSession.metadata = new MediaMetadata({title: tracks[cur].name, artist: 'Lokální přehrávač', artwork: u ? [{src: u}] : []});
+  try { navigator.mediaSession.metadata = new MediaMetadata({title: tracks[cur].name, artist: 'Lokální přehrávač', artwork: u ? [{src: u}] : []}); } catch (e) {}
 }
 $('setBtn').onclick = () => $('modal').classList.add('open');
 $('close').onclick = () => $('modal').classList.remove('open');
@@ -141,16 +142,19 @@ async function walk(dir, out) {
 }
 const openDir = async h => { const out = []; await walk(h, out); addFiles(out); };
 let savedDir = null;
-$('openBtn').onclick = async () => {
-  if (window.showDirectoryPicker) { // počítač: zapamatuje si složku
-    try {
-      const d = await showDirectoryPicker({mode: 'read'}); await openDir(d);
-      await kvSet('dir', d); await saveFiles([]); $('restoreBtn').hidden = true; return;
-    } catch (e) { if (e.name === 'AbortError') return; }
-  }
-  $('files').click(); // Android: výběr souborů
+$('openBtn').onclick = async e => {
+  if (PS || !window.showDirectoryPicker) return;    // Android a ostatní: label sám otevře výběr souborů
+  e.preventDefault();                               // počítač: výběr složky, zapamatuje se
+  try {
+    const d = await showDirectoryPicker({mode: 'read'}); await openDir(d);
+    await kvSet('dir', d); await saveFiles([]); $('restoreBtn').hidden = true;
+  } catch (err) { if (err.name !== 'AbortError') $('files').click(); }
 };
-$('files').onchange = async e => { const a = addFiles(e.target.files); await kvDel('dir'); await saveFiles(a); };
+$('files').onchange = async e => {
+  const a = addFiles(e.target.files);
+  $('sub').textContent = a.length ? `Načteno skladeb: ${a.length}` : 'Nebyla vybrána žádná podporovaná hudba';
+  await kvDel('dir'); await saveFiles(a);
+};
 $('restoreBtn').onclick = async () => {
   try { if (await savedDir.requestPermission({mode: 'read'}) === 'granted') { await openDir(savedDir); $('restoreBtn').hidden = true; } } catch (e) {}
 };
@@ -239,7 +243,7 @@ audio.onpause = () => {
   // po 10 minutách pauzy se služba i upozornění ukončí (šetří baterii)
   if (PS) stopT = setTimeout(() => { if (audio.paused && psOn) { psOn = false; PS.stop().catch(() => {}); } }, 600000);
 };
-if (PS) PS.addListener('action', e => { if (e.action === 'playpause') $('play').click(); else if (e.action === 'next') step(1); });
+try { if (PS) PS.addListener('action', e => { if (e.action === 'playpause') $('play').click(); else if (e.action === 'next') step(1); }).catch(() => {}); } catch (e) {}
 audio.onended = () => {
   if (repeat === 2) { audio.currentTime = 0; audio.play(); return; }
   const pool = view.length ? view : tracks.map((t, i) => i);
@@ -278,6 +282,7 @@ function resize() {
   cv.width = W * dpr; cv.height = H * dpr; vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // Pozadí se kreslí v poloviční velikosti (rozmazané kruhy, ušetří výkon)
   const d = cfg.perf === 'full' ? 2 : 4; fx.width = innerWidth / d; fx.height = innerHeight / d;
+  idleDrawn = false;                                // plátna se vymazala, v klidu je nutné je překreslit
 }
 new ResizeObserver(resize).observe(cv);
 addEventListener('resize', resize);
@@ -319,7 +324,7 @@ function drawFx(t, dt, playing) {
 
 /* ===== Hlavní smyčka ===== */
 let bass = 0, hidden = false, prev = performance.now();
-document.addEventListener('visibilitychange', () => hidden = document.hidden);
+document.addEventListener('visibilitychange', () => { hidden = document.hidden; idleDrawn = false; });
 
 const FPS = {full: [60, 30], balanced: [30, 20], eco: [24, 0]}; // [vizuál, pozadí] snímků za sekundu
 let lastViz = 0, lastFx = 0, lastSc = 1, idleDrawn = false;
@@ -379,8 +384,9 @@ applyCfg(); resize(); renderList(); restore(); requestAnimationFrame(draw);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 if ('mediaSession' in navigator) {
   const ms = navigator.mediaSession;
-  ms.setActionHandler('play', () => audio.play()); ms.setActionHandler('pause', () => audio.pause());
-  ms.setActionHandler('previoustrack', () => step(-1)); ms.setActionHandler('nexttrack', () => step(1));
+  for (const [n, f] of [['play', () => audio.play()], ['pause', () => audio.pause()], ['previoustrack', () => step(-1)], ['nexttrack', () => step(1)]]) {
+    try { ms.setActionHandler(n, f); } catch (e) {}
+  }
 }
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.Capacitor) navigator.serviceWorker.register('sw.js'); // instalace jako aplikace
 })();
