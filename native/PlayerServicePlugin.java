@@ -31,4 +31,12 @@ public class PlayerServicePlugin extends Plugin {
   @PluginMethod public void stop(PluginCall call) {
     getContext().stopService(new Intent(getContext(), PlayerService.class)); call.resolve();
   }
+
+  /** Okraje systémových lišt (CSS pixely), aby se pozadí mohlo kreslit i pod nimi. */
+  @PluginMethod public void insets(PluginCall call) {
+    JSObject o = new JSObject();
+    o.put("top", (double) MainActivity.it); o.put("right", (double) MainActivity.ir);
+    o.put("bottom", (double) MainActivity.ib); o.put("left", (double) MainActivity.il);
+    call.resolve(o);
+  }
 }

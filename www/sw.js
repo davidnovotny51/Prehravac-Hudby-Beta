@@ -1,6 +1,6 @@
 /* Service worker: uloží soubory aplikace, aby běžela i bez internetu.
    Po změně souborů nebo ikon zvyšte číslo verze. */
-const CACHE = 'prehravac-v6';
+const CACHE = 'prehravac-v7';
 const FILES = ['./', 'index.html', 'style.css', 'script.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });

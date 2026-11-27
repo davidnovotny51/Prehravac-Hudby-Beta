@@ -6,6 +6,7 @@ addEventListener('error', e => { const s = document.getElementById('sub'); if (s
 /* ===== Stav ===== */
 let tracks = [], view = [], cur = -1, shuffle = false, repeat = 0; // repeat: 0 vypnuto, 1 vše, 2 jedna
 const audio = new Audio();
+const touch = matchMedia('(hover: none)').matches;   // telefon nebo tablet
 /* Android aplikace: služba na popředí drží přehrávání při vypnuté obrazovce */
 const PS = (() => {
   const C = window.Capacitor;
@@ -293,23 +294,37 @@ function resize() {
   const r = cv.getBoundingClientRect(); W = r.width; H = r.height;
   cv.width = W * dpr; cv.height = H * dpr; vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // Pozadí se kreslí v poloviční velikosti (rozmazané kruhy, ušetří výkon)
-  const d = cfg.perf === 'full' ? 2 : 4; fx.width = innerWidth / d; fx.height = innerHeight / d;
+  const d = cfg.perf === 'full' ? 2 : touch ? 6 : 4; fx.width = innerWidth / d; fx.height = innerHeight / d;
   idleDrawn = false;                                // plátna se vymazala, v klidu je nutné je překreslit
 }
 new ResizeObserver(resize).observe(cv);
 addEventListener('resize', resize);
 
 /* ===== Barevné kruhy v pozadí (styl Siri) ===== */
-const blobs = Array.from({length: 7}, (_, i) => ({
+const NB = touch ? 5 : 7;                                              // na telefonu méně kruhů
+const blobs = Array.from({length: NB}, (_, i) => ({
   x: Math.random(), y: Math.random(),
   vx: (Math.random() - .5) * .00006, vy: (Math.random() - .5) * .00006, // pomalý drift
   r: .22 + Math.random() * .16, off: i * 38,                            // posun odstínu
-  band: 2 + i * 14, e: 0                                                // frekvenční pásmo
+  band: 2 + Math.round(i * 84 / (NB - 1)), e: 0                         // frekvenční pásmo
 }));
 let hueBase = 200, kick = 0, avg = .2, lastBeat = 0;
 
+/* Měkký kruh dané barvy se vytvoří jen jednou a pak se jen kreslí (levnější než gradient při každém snímku) */
+const sprites = {};
+function sprite(hue) {
+  const h = Math.round(hue / 5) * 5 % 360;
+  if (!sprites[h]) {
+    const c = document.createElement('canvas'); c.width = c.height = 96;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(48, 48, 0, 48, 48, 48);
+    gr.addColorStop(0, `hsla(${h},95%,60%,1)`); gr.addColorStop(1, `hsla(${h},95%,55%,0)`);
+    g.fillStyle = gr; g.fillRect(0, 0, 96, 96); sprites[h] = c;
+  }
+  return sprites[h];
+}
+
 function drawFx(t, dt, playing) {
-  const w = fx.width, h = fx.height;
+  const w = fx.width, h = fx.height, m = Math.max(w, h);
   fctx.globalCompositeOperation = 'source-over';
   fctx.clearRect(0, 0, w, h);
   fctx.globalCompositeOperation = 'lighter';
@@ -324,32 +339,39 @@ function drawFx(t, dt, playing) {
     if (b.y < -.1 || b.y > 1.1) b.vy *= -1;
     let e = 0; if (playing) { for (let k = 0; k < 6; k++) e += data[b.band + k]; e /= 1530; }
     b.e += (e - b.e) * .25;
-    const rad = b.r * Math.max(w, h) * (1 + b.e * .9 + kick * .35);
-    const hue = (hueBase + shift + b.off) % 360;
-    const g = fctx.createRadialGradient(b.x * w, b.y * h, 0, b.x * w, b.y * h, rad);
-    const a = playing ? .28 + b.e * .5 : .12;
-    g.addColorStop(0, `hsla(${hue},95%,60%,${a})`);
-    g.addColorStop(1, `hsla(${hue},95%,55%,0)`);
-    fctx.fillStyle = g; fctx.fillRect(0, 0, w, h);
+    const rad = b.r * m * (1 + b.e * .9 + kick * .35);
+    fctx.globalAlpha = Math.min(1, playing ? .28 + b.e * .5 : .12);
+    fctx.drawImage(sprite((hueBase + shift + b.off) % 360), b.x * w - rad, b.y * h - rad, rad * 2, rad * 2);
   }
+  fctx.globalAlpha = 1;
 }
 
 /* ===== Hlavní smyčka ===== */
 let bass = 0, hidden = false, prev = performance.now();
 document.addEventListener('visibilitychange', () => { hidden = document.hidden; idleDrawn = false; });
 
-const FPS = {full: [60, 30], balanced: [30, 20], eco: [24, 0]}; // [vizuál, pozadí] snímků za sekundu
+const FPS = touch ? {full: [60, 30], balanced: [60, 30], eco: [30, 0]}   // telefon: plynulé vlny, pozadí 30 fps
+                   : {full: [60, 30], balanced: [30, 20], eco: [24, 0]};  // [vizuál, pozadí] snímků za sekundu
 let lastViz = 0, lastFx = 0, lastSc = 1, idleDrawn = false;
+let cost = 0, lite = false;                        // průměrná doba kreslení a automatický úsporný režim
+const coverEl = $('cover'), sm = new Float32Array(64); // sm = vyhlazené výšky sloupců
 
 function draw(t) {
   requestAnimationFrame(draw);
   if (hidden) return;                               // skrytá karta nebo minimalizované okno
-  const [vf, ff] = FPS[cfg.perf] || FPS.balanced;
+  const [vf, ff0] = FPS[cfg.perf] || FPS.balanced;
   if (t - lastViz < 1000 / vf - 2) return;          // omezení snímků = méně CPU i GPU
   lastViz = t;
   const playing = !!analyser && !audio.paused;
   // Klid: hudba stojí a vše doznělo, vykreslí se poslední snímek a pak nic
   if (!playing && bass < .004 && kick < .01) { if (idleDrawn) return; idleDrawn = true; } else idleDrawn = false;
+  const t0 = performance.now();
+  render(t, playing, lite ? ff0 / 2 : ff0);
+  cost += (performance.now() - t0 - cost) * .08;
+  lite = lite ? cost > 2.5 : cost > 8;              // když je kreslení pomalé, ubere se detailů
+}
+
+function render(t, playing, ff) {
   if (playing) analyser.getByteFrequencyData(data); else if (data) data.fill(0);
 
   // Síla basů a detekce úderu (beat): náhlý skok nad průměr
@@ -359,13 +381,14 @@ function draw(t) {
   if (playing && b > avg * 1.3 + .06 && t - lastBeat > 280) { lastBeat = t; kick = 1; hueBase += 18 + Math.random() * 25; }
   kick *= .9;
   const sc = 1 + bass * .12;
-  if (Math.abs(sc - lastSc) > .002) { lastSc = sc; $('cover').style.transform = `scale(${sc})`; }
+  if (Math.abs(sc - lastSc) > .002) { lastSc = sc; coverEl.style.transform = `scale(${sc})`; }
 
   if (cfg.fx === 'on' && ff && t - lastFx >= 1000 / ff - 2) { drawFx(t, Math.min(100, t - lastFx), playing); lastFx = t; }
   if (cfg.style === 'off' || !data) return;
 
   vctx.clearRect(0, 0, W, H);
-  const cx = W / 2, cy = H / 2, N = 64;
+  const cx = W / 2, cy = H / 2, N = lite ? 32 : touch ? 48 : 64, st = 58 / N;
+  for (let k = 0; k < N; k++) sm[k] += (data[Math.floor(k * st) + 2] / 255 - sm[k]) * .5; // plynulé dorovnání výšky
   vctx.fillStyle = vctx.strokeStyle = cfg.accent; vctx.globalAlpha = .9;
   if (cfg.style === 'circle') {
     const r0 = W * .28 * (1 + bass * .12);
@@ -373,10 +396,10 @@ function draw(t) {
     vctx.beginPath();
     for (let i = 0; i < N * 2; i++) {
       const k = i < N ? i : 2 * N - 1 - i;          // zrcadlení pro symetrický kruh
-      const v = data[Math.floor(k * .9) + 2] / 255;
-      const a = i / (N * 2) * Math.PI * 2 - Math.PI / 2, l = v * W * .17 + 2;
-      vctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
-      vctx.lineTo(cx + Math.cos(a) * (r0 + l), cy + Math.sin(a) * (r0 + l));
+      const a = i / (N * 2) * Math.PI * 2 - Math.PI / 2, l = sm[k] * W * .17 + 2;
+      const co = Math.cos(a), si = Math.sin(a);
+      vctx.moveTo(cx + co * r0, cy + si * r0);
+      vctx.lineTo(cx + co * (r0 + l), cy + si * (r0 + l));
     }
     vctx.stroke();
     vctx.globalAlpha = .25 + bass * .5; vctx.lineWidth = 2;
@@ -384,15 +407,28 @@ function draw(t) {
   } else {
     const bw = W / N;
     for (let i = 0; i < N; i++) {
-      const h = Math.max(3, data[Math.floor(i * .9) + 1] / 255 * H * .7);
-      vctx.beginPath(); vctx.roundRect(i * bw + bw * .15, H * .85 - h, bw * .7, h, 3); vctx.fill();
+      const h = Math.max(3, sm[i] * H * .7);
+      if (vctx.roundRect) { vctx.beginPath(); vctx.roundRect(i * bw + bw * .15, H * .85 - h, bw * .7, h, 3); vctx.fill(); }
+      else vctx.fillRect(i * bw + bw * .15, H * .85 - h, bw * .7, h);
     }
   }
   vctx.globalAlpha = 1;
 }
 
+/* ===== Okraje systémových lišt (Android): pozadí se kreslí i pod nimi, obsah se odsadí ===== */
+async function applyInsets() {
+  if (!PS) return;
+  try {
+    const r = await psCall('insets', {}), st = document.documentElement.style;
+    st.setProperty('--sat', (r.top || 0) + 'px'); st.setProperty('--sar', (r.right || 0) + 'px');
+    st.setProperty('--sab', (r.bottom || 0) + 'px'); st.setProperty('--sal', (r.left || 0) + 'px');
+  } catch (e) {}
+}
+window.__applyInsets = applyInsets;                 // volá ji nativní část při změně okrajů
+
 /* ===== Start ===== */
 applyCfg(); resize(); renderList(); restore(); requestAnimationFrame(draw);
+applyInsets(); setTimeout(applyInsets, 400); setTimeout(applyInsets, 1500);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 if ('mediaSession' in navigator) {
   const ms = navigator.mediaSession;
