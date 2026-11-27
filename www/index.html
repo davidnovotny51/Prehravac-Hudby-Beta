@@ -15,6 +15,7 @@
 <body>
 <!-- Pozadí: fotka (rozmazaná) + tmavá vrstva + barevné kruhy reagující na hudbu -->
 <div id="bg"></div><div id="bgShade"></div><canvas id="fx"></canvas>
+<pre id="diag" hidden></pre>
 
 <div class="app">
   <aside class="glass">
@@ -65,6 +66,8 @@
     <select id="vizStyle"><option value="circle">Kruhový</option><option value="bars">Sloupcový</option><option value="off">Vypnuto</option></select></div>
   <div class="row"><label>Barevné kruhy v pozadí</label>
     <select id="fxMode"><option value="on">Zapnuto</option><option value="off">Vypnuto</option></select></div>
+  <div class="row"><label>Diagnostika (rychlost, verze WebView)</label>
+    <select id="diagMode"><option value="off">Vypnuto</option><option value="on">Zapnuto</option></select></div>
   <div class="row"><label>Výkon</label>
     <select id="perf"><option value="eco">Úsporný (nejmíň CPU a GPU)</option><option value="balanced">Vyvážený</option><option value="full">Plný (nejplynulejší)</option></select></div>
   <div class="row"><label>Uložená knihovna</label><button class="btn" id="forget">Smazat uloženou knihovnu</button></div>
