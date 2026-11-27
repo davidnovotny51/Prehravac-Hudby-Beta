@@ -7,7 +7,13 @@ addEventListener('error', e => { const s = document.getElementById('sub'); if (s
 let tracks = [], view = [], cur = -1, shuffle = false, repeat = 0; // repeat: 0 vypnuto, 1 vše, 2 jedna
 const audio = new Audio();
 /* Android aplikace: služba na popředí drží přehrávání při vypnuté obrazovce */
-const PS = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() ? Capacitor.registerPlugin('PlayerService') : null;
+const PS = (() => {
+  const C = window.Capacitor;
+  if (!C || !(C.isNativePlatform && C.isNativePlatform())) return null;
+  try { return (C.Plugins && C.Plugins.PlayerService) || (typeof C.registerPlugin === 'function' ? C.registerPlugin('PlayerService') : null); }
+  catch (e) { return null; }
+})();
+const psCall = (m, o) => { try { return Promise.resolve(PS[m](o)); } catch (e) { return Promise.reject(e); } };
 let psOn = false, stopT = 0;
 let actx, analyser, data;
 const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
@@ -143,7 +149,7 @@ async function walk(dir, out) {
 const openDir = async h => { const out = []; await walk(h, out); addFiles(out); };
 let savedDir = null;
 $('openBtn').onclick = async e => {
-  if (PS || !window.showDirectoryPicker) return;    // Android a ostatní: label sám otevře výběr souborů
+  if (PS || !window.showDirectoryPicker || (window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) return;    // Android a ostatní: label sám otevře výběr souborů
   e.preventDefault();                               // počítač: výběr složky, zapamatuje se
   try {
     const d = await showDirectoryPicker({mode: 'read'}); await openDir(d);
@@ -233,17 +239,23 @@ $('rep').onclick = e => { repeat = (repeat + 1) % 3; e.currentTarget.classList.t
 function psSync() {
   if (!PS) return;
   const o = {title: cur >= 0 ? tracks[cur].name : '', playing: !audio.paused};
-  if (!psOn) { if (o.playing) { psOn = true; PS.start(o).catch(() => { psOn = false; }); } }
-  else PS.update(o).catch(() => {});
+  if (!psOn) { if (o.playing) { psOn = true; psCall('start', o).catch(() => { psOn = false; }); } }
+  else psCall('update', o).catch(() => {});
 }
 audio.onplay = () => { $('play').innerHTML = ICON_PAUSE; clearTimeout(stopT); psSync(); };
 audio.onplaying = psSync;                           // změna skladby za hraní
 audio.onpause = () => {
   $('play').innerHTML = ICON_PLAY; psSync(); clearTimeout(stopT);
   // po 10 minutách pauzy se služba i upozornění ukončí (šetří baterii)
-  if (PS) stopT = setTimeout(() => { if (audio.paused && psOn) { psOn = false; PS.stop().catch(() => {}); } }, 600000);
+  if (PS) stopT = setTimeout(() => { if (audio.paused && psOn) { psOn = false; psCall('stop').catch(() => {}); } }, 600000);
 };
-try { if (PS) PS.addListener('action', e => { if (e.action === 'playpause') $('play').click(); else if (e.action === 'next') step(1); }).catch(() => {}); } catch (e) {}
+try { // tlačítka v upozornění posílají události z nativní části
+  if (PS) {
+    const h = e => { if (e.action === 'playpause') $('play').click(); else if (e.action === 'next') step(1); };
+    const r = typeof PS.addListener === 'function' ? PS.addListener('action', h) : Capacitor.addListener('PlayerService', 'action', h);
+    if (r && r.catch) r.catch(() => {});
+  }
+} catch (e) {}
 audio.onended = () => {
   if (repeat === 2) { audio.currentTime = 0; audio.play(); return; }
   const pool = view.length ? view : tracks.map((t, i) => i);
