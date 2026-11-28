@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lokální přehrávač</title>
+<meta name="theme-color" content="#0b0b10">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Pozadí: fotka (rozmazaná) + tmavá vrstva + barevné kruhy reagující na hudbu -->
+<div id="bg"></div><div id="bgShade"></div><canvas id="fx"></canvas>
+<pre id="diag" hidden></pre>
+
+<div class="app">
+  <aside class="glass">
+    <div class="head">
+      <label class="btn primary" id="openBtn" for="files" role="button">Načíst hudbu</label>
+      <button class="btn" id="setBtn">Nastavení</button>
+      <button class="btn" id="restoreBtn" hidden>Obnovit složku</button>
+    </div>
+    <input id="search" type="search" placeholder="Hledat skladbu" aria-label="Hledat">
+    <ul id="list"></ul>
+    <input id="files" class="vh" type="file" accept="audio/*" multiple>
+  </aside>
+
+  <main class="glass">
+    <div class="stage">
+      <canvas id="viz"></canvas>
+      <div class="cover" id="cover"><svg viewBox="0 0 24 24"><path d="M9 18V6l11-2v12M9 18a3 3 0 1 1-3-3M20 16a3 3 0 1 1-3-3"/></svg></div>
+    </div>
+    <div id="title">Nic se nepřehrává</div>
+    <div id="sub">Načtěte hudbu a vyberte skladbu</div>
+  </main>
+
+  <footer class="bar glass">
+    <div class="now"><b id="nowT">-</b></div>
+    <div class="ctr">
+      <div class="btns">
+        <button class="ic" id="shuf" aria-label="Náhodné přehrávání"><svg viewBox="0 0 24 24" class="st"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+        <button class="ic" id="prev" aria-label="Předchozí"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button class="ic play" id="play" aria-label="Přehrát nebo pozastavit"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+        <button class="ic" id="next" aria-label="Další"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        <button class="ic" id="rep" aria-label="Opakování"><svg viewBox="0 0 24 24" class="st"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+      </div>
+      <div class="seek"><span id="cur">0:00</span><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Pozice"><span id="dur">0:00</span></div>
+    </div>
+    <div class="right"><svg viewBox="0 0 24 24" class="st sm"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7"/></svg><input type="range" id="vol" min="0" max="100" value="80" aria-label="Hlasitost"></div>
+  </footer>
+</div>
+
+<div id="modal"><div class="panel glass">
+  <h2>Nastavení</h2>
+  <div class="row"><label>Vlastní pozadí</label>
+    <div class="inl"><button class="btn" id="bgPick">Nahrát obrázek</button><button class="btn" id="bgClear">Odebrat</button></div>
+    <input type="file" id="bgFile" accept="image/*" hidden></div>
+  <div class="row"><label>Ztmavení pozadí <span id="opV"></span></label><input type="range" id="op" min="0" max="95"></div>
+  <div class="row"><label>Rozmazání pozadí <span id="blV"></span></label><input type="range" id="bl" min="0" max="40"></div>
+  <div class="row"><label>Akcentová barva</label><div class="colors" id="colors"></div></div>
+  <div class="row"><label>Styl vizuálu</label>
+    <select id="vizStyle"><option value="circle">Kruhový</option><option value="bars">Sloupcový</option><option value="off">Vypnuto</option></select></div>
+  <div class="row"><label>Barevné kruhy v pozadí</label>
+    <select id="fxMode"><option value="on">Zapnuto</option><option value="off">Vypnuto</option></select></div>
+  <div class="row"><label>Posun vizuálu (když obraz předbíhá nebo zaostává za zvukem) <span id="syncV"></span></label><input type="range" id="sync" min="-200" max="400" step="10"></div>
+  <div class="row"><label>Diagnostika (rychlost, verze WebView)</label>
+    <select id="diagMode"><option value="off">Vypnuto</option><option value="on">Zapnuto</option></select></div>
+  <div class="row"><label>Výkon</label>
+    <select id="perf"><option value="eco">Úsporný (nejmíň CPU a GPU)</option><option value="balanced">Vyvážený</option><option value="full">Plný (nejplynulejší)</option></select></div>
+  <div class="row"><label>Uložená knihovna</label><button class="btn" id="forget">Smazat uloženou knihovnu</button></div>
+  <button class="btn primary" id="close">Hotovo</button>
+</div></div>
+<script src="script.js"></script>
+</body>
+</html>
