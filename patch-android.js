@@ -28,3 +28,36 @@ if (!m.includes('PlayerService')) {
   fs.writeFileSync(mf, m);
 }
 console.log('Hotovo. Teď spusťte: npx cap sync');
+
+// ===== Ikona aplikace =====
+// Šablona Capacitoru obsahuje vlastní výchozí ikonu a nástroj capacitor-assets ji z jednoho souboru nepřepíše,
+// proto se ikona vytvoří zde přímo ze souboru assets/icon-only.png (spouští se před i po capacitor-assets).
+async function makeIcons() {
+  let sharp;
+  try { sharp = require('sharp'); } catch (e) { console.log('Ikony: knihovna sharp není dostupná, ikony zůstanou podle capacitor-assets.'); return; }
+  if (!fs.existsSync('assets/icon-only.png')) { console.log('Ikony: chybí assets/icon-only.png'); return; }
+  const src = fs.readFileSync('assets/icon-only.png');
+  const res = 'android/app/src/main/res';
+  const sizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };   // velikost běžné ikony v pixelech
+  for (const [density, s] of Object.entries(sizes)) {
+    const dir = path.join(res, 'mipmap-' + density);
+    fs.mkdirSync(dir, { recursive: true });
+    const layer = Math.round(s * 108 / 48), inner = Math.round(s * 72 / 48);     // adaptivní ikona: vrstva 108 dp, viditelná část 72 dp
+    await sharp(src).resize(s, s, { fit: 'cover' }).png().toFile(path.join(dir, 'ic_launcher.png'));
+    const mask = Buffer.from(`<svg width="${s}" height="${s}"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2}"/></svg>`);
+    await sharp(src).resize(s, s, { fit: 'cover' }).composite([{ input: mask, blend: 'dest-in' }]).png().toFile(path.join(dir, 'ic_launcher_round.png'));
+    const fg = await sharp(src).resize(inner, inner, { fit: 'cover' }).png().toBuffer();
+    await sharp({ create: { width: layer, height: layer, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: fg, gravity: 'centre' }]).png().toFile(path.join(dir, 'ic_player_foreground.png'));
+  }
+  // Barva pozadí adaptivní ikony = průměrná barva ikony
+  const px = await sharp(src).resize(1, 1, { fit: 'cover' }).removeAlpha().raw().toBuffer();
+  const hex = '#' + [...px.slice(0, 3)].map(v => v.toString(16).padStart(2, '0')).join('');
+  fs.mkdirSync(path.join(res, 'values'), { recursive: true });
+  fs.writeFileSync(path.join(res, 'values/ic_launcher_bg_player.xml'), `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n  <color name="ic_launcher_bg_player">${hex}</color>\n</resources>\n`);
+  const adaptive = '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n  <background android:drawable="@color/ic_launcher_bg_player"/>\n  <foreground android:drawable="@mipmap/ic_player_foreground"/>\n</adaptive-icon>\n';
+  fs.mkdirSync(path.join(res, 'mipmap-anydpi-v26'), { recursive: true });
+  for (const n of ['ic_launcher.xml', 'ic_launcher_round.xml']) fs.writeFileSync(path.join(res, 'mipmap-anydpi-v26', n), adaptive);
+  console.log('Ikony aplikace vytvořeny z assets/icon-only.png (pozadí ' + hex + ')');
+}
+makeIcons().catch(e => console.log('Ikony se nepodařilo vytvořit: ' + e.message));
