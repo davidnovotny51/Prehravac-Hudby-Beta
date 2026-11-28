@@ -16,12 +16,13 @@ const PS = (() => {
 })();
 const psCall = (m, o) => { try { return Promise.resolve(PS[m](o)); } catch (e) { return Promise.reject(e); } };
 let psOn = false, stopT = 0;
-let actx, analyser, data;
+let actx, analyser, data, raw, hist, hi = 0, hn = 0;
+const HN = 48, histT = new Float64Array(HN);   // historie spekter pro vyrovnání zpoždění zvuku
 const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
 
 /* ===== Nastavení (localStorage) ===== */
-const defaults = {op:55, bl:12, accent:'#1ed760', style:'circle', fx:'on', perf:'balanced', diag:'off'};
+const defaults = {op:55, bl:12, accent:'#1ed760', style:'circle', fx:'on', perf:'balanced', diag:'off', sync:0};
 let cfg = {...defaults};
 try { cfg = {...defaults, ...JSON.parse(localStorage.getItem('player-cfg') || '{}')}; } catch (e) {}
 const save = () => { try { localStorage.setItem('player-cfg', JSON.stringify(cfg)); } catch (e) { alert('Obrázek je příliš velký pro uložení, zkuste menší.'); } };
@@ -34,6 +35,7 @@ function applyCfg() {
   renderBg();
   $('op').value = cfg.op; $('bl').value = cfg.bl; $('vizStyle').value = cfg.style; $('fxMode').value = cfg.fx;
   document.documentElement.dataset.perf = cfg.perf; $('perf').value = cfg.perf; idleDrawn = false;
+  $('sync').value = cfg.sync; $('syncV').textContent = cfg.sync + ' ms'; [$('op'), $('bl'), $('sync')].forEach(paint);
   $('diagMode').value = cfg.diag; $('diag').hidden = cfg.diag !== 'on';
   $('opV').textContent = cfg.op + ' %'; $('blV').textContent = cfg.bl + ' px';
   document.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.dataset.c === cfg.accent));
@@ -50,6 +52,7 @@ $('op').oninput = e => { cfg.op = +e.target.value; applyCfg(); save(); };
 $('bl').oninput = e => { cfg.bl = +e.target.value; applyCfg(); save(); };
 $('vizStyle').onchange = e => { cfg.style = e.target.value; applyCfg(); save(); };
 $('fxMode').onchange = e => { cfg.fx = e.target.value; applyCfg(); save(); };
+$('sync').oninput = e => { cfg.sync = +e.target.value; applyCfg(); save(); };
 $('diagMode').onchange = e => { cfg.diag = e.target.value; applyCfg(); save(); };
 $('perf').onchange = e => { cfg.perf = e.target.value; applyCfg(); resize(); save(); };
 $('bgPick').onclick = () => $('bgFile').click();
@@ -217,8 +220,9 @@ $('search').oninput = renderList;
 function initAudio() {
   if (actx) return;
   actx = new (window.AudioContext || window.webkitAudioContext)();
-  analyser = actx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = .5;
-  data = new Uint8Array(analyser.frequencyBinCount);
+  analyser = actx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = 0; analyser.minDecibels = -80; analyser.maxDecibels = -12;
+  data = new Uint8Array(analyser.frequencyBinCount); raw = new Uint8Array(data.length);
+  hist = Array.from({length: HN}, () => new Uint8Array(data.length));
   actx.createMediaElementSource(audio).connect(analyser);
   analyser.connect(actx.destination);
 }
@@ -351,7 +355,7 @@ function drawFx(t, dt, playing) {
     if (b.x < -.1 || b.x > 1.1) b.vx *= -1;
     if (b.y < -.1 || b.y > 1.1) b.vy *= -1;
     let e = 0; if (playing) { for (let k = 0; k < 6; k++) e += data[b.band + k]; e /= 1530; }
-    b.e += (e - b.e) * .25;
+    b.e += (e - b.e) * kf(dt, e > b.e ? 60 : 140);
     const rad = b.r * m * (1 + b.e * .9 + kick * .35);
     fctx.globalAlpha = Math.min(1, playing ? .36 + b.e * .5 : .22);
     fctx.drawImage(sprite((hueBase + shift + b.off) % 360), b.x * w - rad, b.y * h - rad, rad * 2, rad * 2);
@@ -360,24 +364,24 @@ function drawFx(t, dt, playing) {
 }
 
 /* ===== Hlavní smyčka ===== */
-let bass = 0, hidden = false, prev = performance.now();
+let bass = 0, bass1 = 0, hidden = false, prev = performance.now();
 document.addEventListener('visibilitychange', () => { hidden = document.hidden; idleDrawn = false; });
 
-const FPS = touch ? {full: [60, 30], balanced: [60, 30], eco: [30, 0]}   // telefon: plynulé vlny, pozadí 30 fps
+const FPS = touch ? {full: [60, 60], balanced: [60, 60], eco: [30, 0]}   // telefon: vlny i pozadí 60 fps
                    : {full: [60, 30], balanced: [30, 20], eco: [24, 0]};  // [vizuál, pozadí] snímků za sekundu
 let lastViz = 0, lastFx = 0, lastSc = 1, idleDrawn = false;
-let cost = 0, lite = false, frames = 0, drawn = 0, fps = 0, dfps = 0, fpsT = 0;                        // průměrná doba kreslení a automatický úsporný režim
-const coverEl = $('cover'), sm = new Float32Array(64); // sm = vyhlazené výšky sloupců
+let cost = 0, lite = false, frames = 0, drawn = 0, fps = 0, dfps = 0, fpsT = 0, updates = 0, ups = 0;                        // průměrná doba kreslení a automatický úsporný režim
+const coverEl = $('cover'), sm = new Float32Array(64), sm1 = new Float32Array(64), prevRaw = new Uint8Array(24); // sm = vyhlazené výšky sloupců
 
 function draw(t) {
   requestAnimationFrame(draw);
   if (hidden) return;                               // skrytá karta nebo minimalizované okno
   frames++;
   if (t - fpsT >= 1000) {                           // měření skutečné rychlosti (pro diagnostiku)
-    fps = frames * 1000 / (t - fpsT); dfps = drawn * 1000 / (t - fpsT); frames = drawn = 0; fpsT = t;
+    fps = frames * 1000 / (t - fpsT); dfps = drawn * 1000 / (t - fpsT); ups = updates * 1000 / (t - fpsT); frames = drawn = updates = 0; fpsT = t;
     if (cfg.diag === 'on') {
       const v = ((navigator.userAgent || '').match(/Chrome\/([\d.]+)/) || [])[1] || '?';
-      $('diag').textContent = `obraz ${fps.toFixed(0)} fps | kresleno ${dfps.toFixed(0)}/s\nkreslení ${cost.toFixed(1)} ms${lite ? ' (odlehčeno)' : ''}\nWebView ${v}\ndpr ${devicePixelRatio} | ${cfg.perf}\nvizuál ${cv.width}x${cv.height} | pozadí ${fx.width}x${fx.height}`;
+      $('diag').textContent = `obraz ${fps.toFixed(0)} fps | kresleno ${dfps.toFixed(0)}/s\nkreslení ${cost.toFixed(1)} ms${lite ? ' (odlehčeno)' : ''}\nWebView ${v} | analyzér ${ups.toFixed(0)}/s\nlatence ${actx ? Math.round(((actx.outputLatency || 0) + (actx.baseLatency || 0)) * 1000) : 0} ms + posun ${cfg.sync} ms\ndpr ${devicePixelRatio} | ${cfg.perf}\nvizuál ${cv.width}x${cv.height} | pozadí ${fx.width}x${fx.height}`;
     }
   }
   const [vf, ff0] = FPS[cfg.perf] || FPS.balanced;
@@ -393,15 +397,31 @@ function draw(t) {
   lite = lite ? cost > 2.5 : cost > 8;              // když je kreslení pomalé, ubere se detailů
 }
 
+const kf = (dt, tau) => 1 - Math.exp(-dt / tau);     // vyhlazení podle času, ne podle počtu snímků
+let lastRender = 0;
+function frameAt(target) {                         // spektrum z doby `target`
+  for (let n = 1; n <= hn; n++) { const i = (hi - n + HN) % HN; if (histT[i] <= target) return hist[i]; }
+  return hn ? hist[(hi - hn + HN) % HN] : raw;
+}
+
 function render(t, playing, ff) {
-  if (playing) analyser.getByteFrequencyData(data); else if (data) data.fill(0);
+  const dt = Math.min(100, t - lastRender || 16); lastRender = t;
+  if (playing) {
+    analyser.getByteFrequencyData(raw);
+    for (let i = 0; i < 24; i++) if (raw[i] !== prevRaw[i]) { updates++; prevRaw.set(raw.subarray(0, 24)); break; } // kolikrát za sekundu se změní data analyzátoru
+    hist[hi].set(raw); histT[hi] = t; hi = (hi + 1) % HN; hn = Math.min(hn + 1, HN);
+    // Obraz se zpozdí o latenci výstupu zvuku (telefon, Bluetooth), aby seděl na to, co je slyšet
+    const lat = ((actx.outputLatency || 0) + (actx.baseLatency || 0)) * 1000;
+    data.set(frameAt(t - Math.min(600, Math.max(0, lat + cfg.sync))));
+  } else if (data) { data.fill(0); hn = 0; }
 
   // Síla basů a detekce úderu (beat): náhlý skok nad průměr
   let b = 0; if (data) { for (let i = 0; i < 6; i++) b += data[i]; b /= 1530; }
-  bass += (b - bass) * .35;
-  avg += (b - avg) * .04;
+  bass1 += (b - bass1) * kf(dt, b > bass1 ? 20 : 60);
+  bass += (bass1 - bass) * kf(dt, 25);
+  avg += (b - avg) * kf(dt, 400);
   if (playing && b > avg * 1.3 + .06 && t - lastBeat > 280) { lastBeat = t; kick = 1; hueBase += 18 + Math.random() * 25; }
-  kick *= .9;
+  kick *= Math.exp(-dt / 160);
   const sc = 1 + bass * .12;
   if (Math.abs(sc - lastSc) > .002) { lastSc = sc; coverEl.style.transform = `scale(${sc})`; }
 
@@ -410,7 +430,7 @@ function render(t, playing, ff) {
 
   vctx.clearRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, N = lite ? 32 : touch ? 48 : 64, st = 58 / N;
-  for (let k = 0; k < N; k++) { const v = data[Math.floor(k * st) + 2] / 255; sm[k] += (v - sm[k]) * (v > sm[k] ? .75 : .3); } // rychlý nárůst, pomalejší pokles
+  for (let k = 0; k < N; k++) { const v = data[Math.floor(k * st) + 2] / 255; sm1[k] += (v - sm1[k]) * kf(dt, v > sm1[k] ? 18 : 70); sm[k] += (sm1[k] - sm[k]) * kf(dt, 28); } // rychlý nárůst, pomalejší pokles
   vctx.fillStyle = vctx.strokeStyle = cfg.accent; vctx.globalAlpha = .9;
   if (cfg.style === 'circle') {
     const r0 = W * .28 * (1 + bass * .12);

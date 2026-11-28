@@ -124,3 +124,4 @@ html{background:#0b0b10}
 #list{overflow-x:hidden}
 .stage{max-width:100%}
 #diag{position:fixed;left:calc(var(--sal,0px) + 6px);top:calc(var(--sat,0px) + 6px);z-index:20;margin:0;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#9f9;font:11px/1.35 monospace;pointer-events:none;white-space:pre}
+body{background:transparent}
